@@ -29,6 +29,8 @@ export type RFPItem = {
   client_name?: string
   current_status?: string
   summary_json?: string
+  effortShort?: string | null
+  documentQuality?: string | null
 }
 
 type RFPStore = {

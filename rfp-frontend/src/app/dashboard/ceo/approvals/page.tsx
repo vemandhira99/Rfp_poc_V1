@@ -57,7 +57,7 @@ export default function ApprovalsPage() {
     return () => clearInterval(iv)
   }, [])
 
-  const openDecision = (rfpId: number, rfpTitle: string, decision: DecisionModal['decision']) => {
+  const openDecision = (rfpId: number, rfpTitle: string, decision: 'final_approved' | 'revision_requested' | 'rejected') => {
     setReason('')
     setModal({ rfpId, rfpTitle, decision })
   }
