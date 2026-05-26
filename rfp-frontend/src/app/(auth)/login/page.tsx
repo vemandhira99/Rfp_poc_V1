@@ -64,135 +64,136 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-white overflow-hidden">
       {/* Left Section - Project Info (Black) */}
-      <div className="w-full md:w-1/2 bg-zinc-950 p-12 flex flex-col justify-between text-white relative overflow-hidden">
+      <div className="w-full md:w-[45%] bg-zinc-950 p-8 lg:p-12 flex flex-col justify-between text-white relative overflow-hidden">
         {/* Abstract background element */}
-        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-96 h-96 bg-purple-600/5 rounded-full blur-3xl"></div>
+        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-blue-600/10 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 bg-purple-600/5 rounded-full blur-3xl"></div>
         
         <div className="relative z-10">
-          <div className="flex items-center gap-2 mb-16">
-            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center">
-              <span className="text-black font-black text-xl italic">R</span>
+          <div className="flex items-center gap-2 mb-12">
+            <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
+              <span className="text-black font-black text-lg italic">R</span>
             </div>
-            <span className="text-xl font-bold tracking-tight">RFP Automation</span>
+            <span className="text-lg font-bold tracking-tight">RFP Automation</span>
           </div>
 
-          <div className="space-y-8 max-w-md">
-            <h1 className="text-5xl font-bold leading-tight tracking-tighter">
+          <div className="space-y-6 max-w-sm">
+            <h1 className="text-4xl font-bold leading-[1.1] tracking-tight">
               The Future of <br />
-              <span className="text-zinc-400">RFP Responses.</span>
+              <span className="text-zinc-500">RFP Responses.</span>
             </h1>
-            <p className="text-lg text-zinc-400 font-medium leading-relaxed">
+            <p className="text-base text-zinc-400 font-medium leading-relaxed">
               Accelerate your sales cycle with our AI-powered RFP automation platform. 
-              Built for high-growth enterprises to streamline compliance and collaboration.
+              Streamline compliance and collaboration.
             </p>
 
-            <div className="space-y-6 pt-4">
+            <div className="space-y-4 pt-2">
               {[
-                { icon: Zap, text: '60% faster response times with AI-driven drafting' },
-                { icon: Shield, text: 'Real-time compliance tracking & risk assessment' },
-                { icon: Users, text: 'Seamless collaboration for global pursuit teams' }
+                { icon: Zap, text: '60% faster response times with AI drafting' },
+                { icon: Shield, text: 'Real-time compliance & risk assessment' },
+                { icon: Users, text: 'Seamless global team collaboration' }
               ].map((item, i) => (
-                <div key={i} className="flex items-start gap-4">
-                  <div className="mt-1 p-1 rounded-md bg-zinc-800">
-                    <item.icon className="w-4 h-4 text-blue-400" />
+                <div key={i} className="flex items-center gap-3">
+                  <div className="p-1 rounded bg-zinc-800/50 border border-zinc-800">
+                    <item.icon className="w-3.5 h-3.5 text-blue-400" />
                   </div>
-                  <p className="text-zinc-300 font-medium">{item.text}</p>
+                  <p className="text-sm text-zinc-300 font-medium">{item.text}</p>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-        <div className="relative z-10 pt-12">
-          <div className="flex items-center gap-4 p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800 inline-flex">
-            <div className="flex -space-x-2">
+        <div className="relative z-10 pt-8">
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-zinc-900/40 border border-zinc-800/50 inline-flex">
+            <div className="flex -space-x-1.5">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="w-8 h-8 rounded-full border-2 border-zinc-900 bg-zinc-800 flex items-center justify-center text-[10px] font-bold">
+                <div key={i} className="w-6 h-6 rounded-full border-2 border-zinc-950 bg-zinc-800 flex items-center justify-center text-[8px] font-bold text-zinc-500">
                   U{i}
                 </div>
               ))}
             </div>
-            <p className="text-xs text-zinc-400 font-medium">Joined by 500+ global enterprises this month</p>
+            <p className="text-[11px] text-zinc-500 font-bold uppercase tracking-wider">Trusted by 500+ enterprises</p>
           </div>
         </div>
       </div>
 
       {/* Right Section - Login Form (White) */}
-      <div className="w-full md:w-1/2 flex items-center justify-center p-8 bg-white">
-        <div className="w-full max-w-sm space-y-10">
-          <div className="space-y-4">
+      <div className="w-full md:w-[55%] flex items-center justify-center p-8 bg-zinc-50/30">
+        <div className="w-full max-w-[380px] space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+          <div className="space-y-6">
             {/* Role Switcher */}
-            <div className="inline-flex p-1 bg-zinc-100 rounded-xl w-full">
+            <div className="inline-flex p-1 bg-zinc-100/80 border border-zinc-200/50 rounded-xl w-full">
               <button 
                 onClick={() => setRole('pm')}
                 className={cn(
-                  "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-lg transition-all",
-                  role === 'pm' ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                  "flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-bold rounded-lg transition-all",
+                  role === 'pm' ? "bg-white text-zinc-900 shadow-sm border border-zinc-200/50" : "text-zinc-500 hover:text-zinc-700"
                 )}
               >
-                <Briefcase className="w-4 h-4" />
-                Project Manager
+                <Briefcase className="w-3.5 h-3.5" />
+                PM
               </button>
               <button 
                 onClick={() => setRole('architect')}
                 className={cn(
-                  "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-lg transition-all",
-                  role === 'architect' ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                  "flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-bold rounded-lg transition-all",
+                  role === 'architect' ? "bg-white text-zinc-900 shadow-sm border border-zinc-200/50" : "text-zinc-500 hover:text-zinc-700"
                 )}
               >
-                <UserCircle2 className="w-4 h-4" />
-                Solution Architect
+                <UserCircle2 className="w-3.5 h-3.5" />
+                Architect
               </button>
             </div>
 
-            <div className="space-y-1">
-              <h2 className="text-3xl font-bold tracking-tight text-zinc-900">
-                {role === 'pm' ? 'Project Manager Login' : 'Solution Architect Login'}
+            <div className="space-y-1.5 text-center">
+              <h2 className="text-2xl font-bold tracking-tight text-zinc-900">
+                Welcome back
               </h2>
               <p className="text-zinc-500 font-medium text-sm">
-                {role === 'pm' 
-                  ? 'Sign in to review and manage all active RFPs' 
-                  : 'Sign in to access your technical workspace and drafting tools'}
+                Sign in to your {role === 'pm' ? 'Manager' : 'Architect'} account
               </p>
             </div>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-6">
+          <form onSubmit={handleLogin} className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-xs font-bold uppercase tracking-wider text-zinc-400">Email Address</Label>
+              <Label htmlFor="email" className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 ml-1">Email Address</Label>
               <Input 
                 id="email" 
                 type="email" 
                 placeholder={role === 'pm' ? 'yash@company.com' : 'veman@company.com'} 
                 required 
-                className="h-12 border-zinc-200 focus-visible:ring-zinc-900 focus-visible:border-zinc-900 rounded-xl px-4 py-6 text-base font-medium transition-all" 
+                className="input-premium h-11 px-4 text-sm font-medium" 
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-xs font-bold uppercase tracking-wider text-zinc-400">Password</Label>
+              <div className="flex justify-between items-center px-1">
+                <Label htmlFor="password" className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Password</Label>
+                <a href="#" className="text-[10px] font-bold text-zinc-400 hover:text-zinc-900 transition-colors uppercase tracking-widest">Forgot?</a>
+              </div>
               <Input 
                 id="password" 
                 type="password" 
                 placeholder="••••••••" 
                 required 
-                className="h-12 border-zinc-200 focus-visible:ring-zinc-900 focus-visible:border-zinc-900 rounded-xl px-4 py-6 text-base font-medium transition-all" 
+                className="input-premium h-11 px-4 text-sm font-medium" 
               />
             </div>
             
             <Button 
               type="submit" 
-              className="w-full h-14 bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-lg rounded-xl shadow-lg shadow-zinc-200 transition-all hover:scale-[1.01] active:scale-[0.99] group"
+              className="w-full h-11 bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-sm rounded-xl transition-all shadow-sm group"
             >
-              Sign in as {role === 'pm' ? 'Project Manager' : 'Solution Architect'}
-              <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+              Sign in
+              <ChevronRight className="w-4 h-4 ml-1.5 group-hover:translate-x-0.5 transition-transform" />
             </Button>
           </form>
 
-          <div className="pt-8 border-t border-zinc-100 space-y-4 text-center text-sm font-medium">
-            <p className="text-zinc-400">
-              Need assistance? <a href="#" className="text-zinc-900 font-bold hover:underline underline-offset-4 transition-all">Support Center</a>
+          <div className="pt-6 border-t border-zinc-100 text-center">
+            <p className="text-xs text-zinc-400 font-medium">
+              New to the platform? <a href="#" className="text-zinc-900 font-bold hover:underline underline-offset-4 transition-all">Request access</a>
             </p>
           </div>
         </div>

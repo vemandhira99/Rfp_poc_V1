@@ -6,6 +6,7 @@ from app.api.routes.auth import get_current_user
 from app.models.rfp import RFPDocument, AuditLog
 from app.services.parsing_service import run_parsing
 from app.services.ai_service import generate_summary
+from app.utils.text_extraction import extract_full_text
 import os, time
 
 router = APIRouter(prefix="/uploads", tags=["Uploads"])
@@ -59,41 +60,118 @@ async def upload_rfp(
         "status": rfp.current_status
     }
 
-def process_rfp_background(rfp_id: int, db_session_factory):
-    # We use a fresh session for background tasks if needed, 
-    # but here we can just use the provided one or handle scoping.
-    # For simplicity in this environment, we'll use the passed DB
+def process_rfp_background(rfp_id: int):
     from app.core.database import SessionLocal
     from app.core.config import settings
+    from app.models.rfp import BackgroundJob, RFPMetadata, RFPRequirement, RFPDocument
     from google import genai
+    from app.services.ai_service import ensure_gemini_file, call_ai, clean_json
+    from app.utils.text_extraction import extract_full_text
+    from app.services.ai_service import generate_summary
+    from datetime import datetime
     
     db = SessionLocal()
     try:
         rfp = db.query(RFPDocument).filter(RFPDocument.id == rfp_id).first()
-        if not rfp:
-            return
+        if not rfp: return
 
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        
-        # 1. Native Ingestion
-        uploaded_file = client.files.upload(file=rfp.file_path, config={'display_name': rfp.file_name})
-        rfp.gemini_file_uri = uploaded_file.name
-        rfp.current_status = "processing_summary"
+        # 1. Initialize Job
+        job = db.query(BackgroundJob).filter(BackgroundJob.rfp_id == rfp_id, BackgroundJob.job_type == "analysis").first()
+        if not job:
+            job = BackgroundJob(rfp_id=rfp_id, job_type="analysis", status="running", total_steps=5, current_step="Starting analysis", progress_percentage=10)
+            db.add(job)
+        else:
+            job.status = "running"
+            job.progress_percentage = 10
         db.commit()
 
-        # 2. Generate Summary (This also triggers the notification)
-        generate_summary(db, rfp_id)
+        rfp.current_status = "analysis_running"
+        db.commit()
+
+
+        # Stage 1: Full text extraction (Fast)
+        job.current_step = "Extracting text"
+        job.progress_percentage = 20
+        db.commit()
+        if not rfp.full_text:
+            rfp.full_text = extract_full_text(rfp.file_path, rfp.file_type)
+            db.commit()
+
+        # Stage 2: Basic metadata extraction (Fast, Hybrid)
+        job.current_step = "Extracting basic metadata"
+        job.progress_percentage = 40
+        db.commit()
         
+        prompt = """Extract basic metadata from this text as JSON: 
+{"title": "...", "client_name": "...", "deadline": "YYYY-MM-DD", "value": "...", "project_overview": "..."}"""
+        
+        metadata_res = call_ai(db, "metadata_extraction", prompt, context=[rfp.full_text[:30000] if rfp.full_text else ""])
+        try:
+            m_json = clean_json(metadata_res["text"])
+            if m_json:
+                rfp.title = m_json.get("title", rfp.title)
+                rfp.client_name = m_json.get("client_name", rfp.client_name)
+                
+                # Save to RFPMetadata
+                m_data = db.query(RFPMetadata).filter(RFPMetadata.rfp_id == rfp_id).first()
+                if not m_data:
+                    m_data = RFPMetadata(rfp_id=rfp_id)
+                    db.add(m_data)
+                
+                if m_json.get("value"):
+                    try:
+                        import re
+                        num = re.sub(r'[^\d.]', '', m_json["value"])
+                        if num: m_data.estimated_value = float(num)
+                    except: pass
+                db.commit()
+        except Exception as e:
+            print("Metadata extraction error:", e)
+
+        # Stage 3: Deep Document Reasoning (Gemini)
+        job.current_step = "Uploading to deep analysis engine"
+        job.progress_percentage = 60
+        db.commit()
+        
+        ensure_gemini_file(db, rfp)
+        
+        job.current_step = "Synthesizing executive summary"
+        job.progress_percentage = 80
+        db.commit()
+        
+        summary_result = generate_summary(db, rfp_id)
+        if summary_result.get("status") == "error":
+            raise Exception(summary_result.get("error"))
+
+        # Stage 4: Requirements & Compliance Extracted
+        job.current_step = "Finalizing analysis"
+        job.progress_percentage = 95
+        db.commit()
+
+        # We can extract compliance requirements here or let it be on-demand
+        from app.services.ai_service import extract_compliance_matrix
+        extract_compliance_matrix(db, rfp_id)
+
+        # Stage 5: Done
+        job.current_step = "Analysis complete"
+        job.progress_percentage = 100
+        job.status = "completed"
+        job.completed_at = datetime.utcnow()
+        
+        rfp.current_status = "ready_for_pm_review"
+        db.commit()
+
     except Exception as e:
         print(f"Background processing failed for RFP {rfp_id}: {str(e)}")
-        # Update status to error
-        try:
-            rfp = db.query(RFPDocument).filter(RFPDocument.id == rfp_id).first()
-            if rfp:
-                rfp.current_status = "error"
-                db.commit()
-        except:
-            pass
+        if 'job' in locals() and job:
+            job.status = "failed"
+            job.internal_error = str(e)
+            job.failed_at = datetime.utcnow()
+        rfp = db.query(RFPDocument).filter(RFPDocument.id == rfp_id).first()
+        if rfp:
+            rfp.current_status = "error"
+            rfp.status_message = "Analysis failed. Please try again."
+        db.commit()
     finally:
         db.close()
 
@@ -104,12 +182,44 @@ def parse_rfp(rfp_id: int, background_tasks: BackgroundTasks, db: Session = Depe
     if not rfp:
         raise HTTPException(status_code=404, detail="RFP not found")
 
-    rfp.current_status = "queued_for_processing"
+    # Step 1: Run parsing synchronously (extracts text & calculates richness)
+    parse_result = run_parsing(db, rfp_id)
+    
+    # Reload RFP since run_parsing modified it
+    db.refresh(rfp)
+    
+    if "error" in parse_result:
+        raise HTTPException(status_code=500, detail=f"Parsing failed: {parse_result['error']}")
+
+    quality = parse_result.get("quality", "insufficient_rfp_detail")
+    
+    # Step 2: Quality Guards
+    if quality == "insufficient_rfp_detail":
+        return {
+            "message": "Document contains insufficient detail for full analysis.",
+            "rfp_id": rfp_id,
+            "status": "needs_more_detail",
+            "quality": "insufficient_rfp_detail"
+        }
+    
+    if quality == "extraction_failed_or_scanned_pdf":
+        return {
+            "message": "Text extraction failed or document is scanned/image-based.",
+            "rfp_id": rfp_id,
+            "status": "extraction_needs_review",
+            "quality": "extraction_failed_or_scanned_pdf"
+        }
+
+    # Step 3: Valid Document -> Queue Analysis
+    rfp.current_status = "analysis_queued"
     db.commit()
     
-    background_tasks.add_task(process_rfp_background, rfp_id, None)
+    background_tasks.add_task(process_rfp_background, rfp_id)
+
     
-    return {"message": "RFP parsing started in background.", "rfp_id": rfp_id, "status": "queued_for_processing"}
+    return {"message": "RFP analysis started in background.", "rfp_id": rfp_id, "status": "analysis_queued", "quality": quality}
+
+
 
 @router.get("/rfp/{rfp_id}/sections")
 def get_sections(rfp_id: int, db: Session = Depends(get_db),

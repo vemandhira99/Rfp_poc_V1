@@ -2,244 +2,281 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { 
-  CheckCircle2, 
-  XCircle, 
-  PauseCircle, 
-  Search,
-  ChevronRight,
-  Filter,
-  ArrowUpRight,
-  FileText,
-  DollarSign,
-  Calendar
-} from 'lucide-react'
-import { RFPStatus } from '@/lib/mocks/rfpData'
-import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { CheckCircle2, AlertCircle, XCircle, RefreshCw, User, Calendar, FileText, ArrowUpRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getStatusInfo, formatClient, formatDeadline } from '@/lib/statusUtils'
+import { Badge } from '@/components/ui/badge'
+
+function StatusBadge({ status, documentQuality }: { status: string; documentQuality?: string | null }) {
+  const { label, badgeClass, isPulsing } = getStatusInfo(status, documentQuality)
+  return (
+    <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold border', badgeClass, isPulsing && 'animate-pulse')}>
+      {label}
+    </span>
+  )
+}
+
+type DecisionModal = {
+  rfpId: number
+  rfpTitle: string
+  decision: 'final_approved' | 'revision_requested' | 'rejected'
+} | null
 
 export default function ApprovalsPage() {
   const router = useRouter()
-  const [filter, setFilter] = useState<RFPStatus | 'all'>('all')
-  const [searchQuery, setSearchQuery] = useState('')
-
   const [rfps, setRfps] = useState<any[]>([])
-  const [stats, setStats] = useState({ approved: 0, rejected: 0, onHold: 0, total: 0 })
   const [loading, setLoading] = useState(true)
+  const [isBgRefreshing, setIsBgRefreshing] = useState(false)
+  const [modal, setModal] = useState<DecisionModal>(null)
+  const [reason, setReason] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
 
-  async function loadData() {
+  const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
+    setToast({ msg, type })
+    setTimeout(() => setToast(null), 3500)
+  }
+
+  const loadData = async (bg = false) => {
+    if (bg) setIsBgRefreshing(true)
     try {
       const { fetchApi } = await import('@/lib/api')
-      const [rfpsData, statsData] = await Promise.all([
-        fetchApi('/rfps/'),
-        fetchApi('/rfps/dashboard-summary')
-      ])
-      
-      const mapped = rfpsData.map((r: any) => {
-        let summary: any = null
-        if (r.summary_json) {
-          try { summary = JSON.parse(r.summary_json) } catch(e) {}
-        }
-        return {
-          ...r,
-          status: r.current_status,
-          value: summary?.value || '₹0',
-          deadline: summary?.deadline || 'TBD'
-        }
-      })
-      
-      setRfps(mapped)
-      setStats({
-        approved: statsData.approved,
-        rejected: statsData.rejected,
-        onHold: statsData.on_hold,
-        total: statsData.total
-      })
-    } catch(err) {
-      console.error(err)
+      const data = await fetchApi('/rfps/submitted-for-review')
+      setRfps(data || [])
+    } catch (err) {
+      console.error('Failed to load approvals', err)
     } finally {
       setLoading(false)
+      setIsBgRefreshing(false)
     }
   }
 
   useEffect(() => {
     loadData()
+    const iv = setInterval(() => loadData(true), 15000)
+    return () => clearInterval(iv)
   }, [])
 
-  const filteredRFPs = rfps.filter(rfp => {
-    let matchesFilter = filter === 'all' || rfp.status === filter
-    
-    // Smart overrides for combined statuses
-    if (filter === 'approved') {
-      matchesFilter = rfp.status === 'approved' || rfp.status === 'assigned_to_sa'
-    } else if (filter === 'on_hold' || filter === 'on-hold') {
-      matchesFilter = rfp.status === 'on_hold' || rfp.status === 'on-hold'
-    }
-    
-    const matchesSearch = rfp.title?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         rfp.client_name?.toLowerCase().includes(searchQuery.toLowerCase())
-    return matchesFilter && matchesSearch
-  })
+  const openDecision = (rfpId: number, rfpTitle: string, decision: DecisionModal['decision']) => {
+    setReason('')
+    setModal({ rfpId, rfpTitle, decision })
+  }
 
-  const getStatusColor = (status: RFPStatus) => {
-    switch (status) {
-      case 'approved': return 'bg-emerald-50 text-emerald-700 border-emerald-100'
-      case 'rejected': return 'bg-rose-50 text-rose-700 border-rose-100'
-      case 'on-hold': return 'bg-amber-50 text-amber-700 border-amber-100'
-      default: return 'bg-zinc-50 text-zinc-600 border-zinc-100'
+  const confirmDecision = async () => {
+    if (!modal || isSubmitting) return
+    setIsSubmitting(true)
+    try {
+      const { fetchApi } = await import('@/lib/api')
+      await fetchApi(`/rfps/${modal.rfpId}/final-decision`, {
+        method: 'POST',
+        body: JSON.stringify({
+          decision: modal.decision,
+          reason: reason,
+          revision_notes: modal.decision === 'revision_requested' ? reason : undefined,
+        })
+      })
+      const labels: Record<string, string> = {
+        final_approved: 'Final Approved ✓',
+        revision_requested: 'Revision Requested',
+        rejected: 'Rejected',
+      }
+      showToast(`${labels[modal.decision]} — ${modal.rfpTitle}`, modal.decision === 'rejected' ? 'error' : 'success')
+      setModal(null)
+      loadData(true)
+    } catch (e) {
+      showToast('Action failed. Please try again.', 'error')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
-  const getStatusIcon = (status: RFPStatus) => {
-    switch (status) {
-      case 'approved': return <CheckCircle2 className="w-4 h-4" />
-      case 'rejected': return <XCircle className="w-4 h-4" />
-      case 'on-hold': return <PauseCircle className="w-4 h-4" />
-      default: return <FileText className="w-4 h-4" />
-    }
+  const decisionConfig = {
+    final_approved:     { label: 'Approve Final',      class: 'bg-emerald-600 hover:bg-emerald-700 text-white', headerClass: 'text-emerald-700', icon: CheckCircle2 },
+    revision_requested: { label: 'Request Revision',   class: 'bg-amber-500 hover:bg-amber-600 text-white',   headerClass: 'text-amber-700',   icon: RefreshCw },
+    rejected:           { label: 'Reject',             class: 'bg-rose-600 hover:bg-rose-700 text-white',     headerClass: 'text-rose-700',     icon: XCircle },
   }
 
   return (
-    <div className="space-y-8 pb-12">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="space-y-6 pb-8 animate-in fade-in duration-500">
+      {/* Toast */}
+      {toast && (
+        <div className={cn(
+          'fixed top-6 right-6 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl text-[13px] font-bold text-white animate-in slide-in-from-top-4 duration-300',
+          toast.type === 'success' ? 'bg-zinc-900 border border-zinc-800' : 'bg-rose-600'
+        )}>
+          {toast.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <AlertCircle className="w-4 h-4" />}
+          {toast.msg}
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Approvals & Rejections</h1>
-          <p className="text-zinc-500 mt-1 font-medium">Review and manage the final status of all RFP submissions</p>
+          <h1 className="text-xl lg:text-2xl font-bold tracking-tight text-zinc-900">Queue for Approval</h1>
+          <p className="text-xs text-zinc-500 mt-1 font-medium">Drafts submitted by Architects requiring your final validation and release decision</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-            <Input 
-              placeholder="Filter by title or client..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-11 border-zinc-200 rounded-xl focus-visible:ring-zinc-900"
-            />
+        <div className="flex items-center gap-6">
+          {isBgRefreshing && (
+            <span className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
+              <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Live Sync
+            </span>
+          )}
+          <div className="flex flex-col items-end">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Pending Review</span>
+            <span className="text-xl font-black text-amber-600 leading-none mt-1">
+              {rfps.filter(r => r.current_status === 'submitted_for_review').length}
+            </span>
           </div>
-          <Button variant="outline" className="h-11 px-4 rounded-xl border-zinc-200 hover:bg-zinc-50 font-bold gap-2">
-            <Filter className="w-4 h-4" />
-            More Filters
-          </Button>
         </div>
       </div>
 
-      {/* Status Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { id: 'all', label: 'Total RFPs', count: stats.total, icon: FileText, color: 'zinc' },
-          { id: 'approved', label: 'Approved', count: stats.approved, icon: CheckCircle2, color: 'emerald' },
-          { id: 'on-hold', label: 'On Hold', count: stats.onHold, icon: PauseCircle, color: 'amber' },
-          { id: 'rejected', label: 'Rejected', count: stats.rejected, icon: XCircle, color: 'rose' }
-        ].map((item) => (
-          <Card 
-            key={item.id}
-            onClick={() => setFilter(item.id as any)}
-            className={cn(
-              "cursor-pointer transition-all border-zinc-200 hover:shadow-md active:scale-[0.98]",
-              filter === item.id ? `ring-2 ring-zinc-900 shadow-sm bg-zinc-50` : "bg-white"
-            )}
-          >
-            <CardContent className="p-4 md:p-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">{item.label}</p>
-                  <h3 className="text-2xl md:text-3xl font-black text-zinc-900">{item.count}</h3>
-                </div>
-                <div className={cn(
-                  "p-2 md:p-2.5 rounded-xl",
-                  item.color === 'emerald' ? "bg-emerald-50 text-emerald-600" :
-                  item.color === 'amber' ? "bg-amber-50 text-amber-600" :
-                  item.color === 'rose' ? "bg-rose-50 text-rose-600" : "bg-zinc-100 text-zinc-600"
-                )}>
-                  <item.icon className="w-4 h-4 md:w-5 md:h-5" />
-                </div>
-              </div>
-              <div className="mt-4 flex items-center text-[9px] font-bold text-zinc-400 gap-1 uppercase tracking-tighter group transition-colors hover:text-zinc-900">
-                <span>View all {item.label.toLowerCase()}</span>
-                <ArrowUpRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+      {/* Table Container */}
+      <div className="premium-card bg-white p-0 overflow-hidden">
+        {loading ? (
+          <div className="p-8 space-y-4">
+            {[1,2,3,4].map(i => <div key={i} className="h-12 bg-zinc-50 rounded-lg animate-pulse" />)}
+          </div>
+        ) : rfps.length === 0 ? (
+          <div className="py-20 flex flex-col items-center text-center">
+            <div className="w-14 h-14 rounded-2xl bg-zinc-50 border border-zinc-100 flex items-center justify-center mb-4">
+              <FileText className="w-6 h-6 text-zinc-300" />
+            </div>
+            <h3 className="text-sm font-bold text-zinc-900">No pending approvals</h3>
+            <p className="text-xs text-zinc-400 mt-1.5 max-w-xs font-medium leading-relaxed">
+              When an architect completes a draft and submits it for review, it will appear here for your approval.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-zinc-50/50 border-b border-zinc-100">
+                  {['RFP Details', 'Client', 'Submitted By', 'Deadline', 'Status', 'Decision'].map(h => (
+                    <th key={h} className="px-5 py-3 text-left text-[9px] font-black uppercase tracking-widest text-zinc-400">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-50">
+                {rfps.map(rfp => {
+                  let summary: any = null
+                  try { if (rfp.summary_json) summary = JSON.parse(rfp.summary_json) } catch { }
+                  const isDecided = rfp.current_status !== 'submitted_for_review'
+                  return (
+                    <tr key={rfp.id} className="hover:bg-zinc-50/30 transition-colors group">
+                      <td className="px-5 py-3">
+                        <div className="flex flex-col gap-0.5">
+                          <p className="text-[13px] font-bold text-zinc-900 max-w-[220px] truncate group-hover:text-indigo-600 transition-colors">{rfp.title}</p>
+                          <p className="text-[9px] font-black text-zinc-400 uppercase tracking-tighter">ID: #{rfp.id}</p>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-[12px] font-medium text-zinc-600">{formatClient(summary?.client_name || rfp.client_name)}</td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-zinc-100 flex items-center justify-center border border-zinc-200">
+                            <User className="w-3 h-3 text-zinc-500" />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[12px] font-bold text-zinc-700">Arch. #{rfp.submitted_by || '—'}</span>
+                            {rfp.submitted_at && (
+                              <span className="text-[9px] font-medium text-zinc-400">
+                                {new Date(rfp.submitted_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-[12px] font-bold text-zinc-600">
+                         {formatDeadline(summary?.deadline)}
+                      </td>
+                      <td className="px-5 py-3"><StatusBadge status={rfp.current_status} documentQuality={rfp.document_quality} /></td>
+                      <td className="px-5 py-3">
+                        {isDecided ? (
+                          <Badge variant="outline" className="h-5 px-2 text-[9px] font-black uppercase tracking-tighter bg-zinc-100/50 border-none text-zinc-400">Resolved</Badge>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => openDecision(rfp.id, rfp.title, 'final_approved')}
+                              className="h-7 px-3 text-[10px] font-black uppercase tracking-widest rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-all active:scale-95">
+                              Approve
+                            </button>
+                            <button onClick={() => openDecision(rfp.id, rfp.title, 'revision_requested')}
+                              className="h-7 px-3 text-[10px] font-black uppercase tracking-widest rounded-lg bg-amber-50 text-amber-700 border border-amber-100 hover:bg-amber-600 hover:text-white hover:border-amber-600 transition-all active:scale-95">
+                              Revise
+                            </button>
+                            <button onClick={() => router.push(`/dashboard/ceo/rfp/${rfp.id}`)}
+                              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 transition-all" title="Review Analysis">
+                              <ArrowUpRight className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* RFP List Table */}
-      <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-100 bg-zinc-50/50 flex items-center justify-between">
-          <h3 className="font-bold text-zinc-900 flex items-center gap-2">
-            Recent Submissions
-            <Badge variant="outline" className="rounded-full bg-white font-bold">{filteredRFPs.length}</Badge>
-          </h3>
-          <Button variant="ghost" size="sm" className="text-xs font-bold text-zinc-500 hover:text-zinc-900">
-            Export Data
-          </Button>
+      {/* Decision Modal */}
+      {modal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-zinc-900/40 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setModal(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+            {(() => {
+              const cfg = decisionConfig[modal.decision]
+              const Icon = cfg.icon
+              return (
+                <div className="p-6 space-y-5">
+                  <div className="flex items-start gap-4">
+                    <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border', 
+                      modal.decision === 'final_approved' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' :
+                      modal.decision === 'revision_requested' ? 'bg-amber-50 border-amber-100 text-amber-600' : 'bg-rose-50 border-rose-100 text-rose-600'
+                    )}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="text-base font-bold text-zinc-900 tracking-tight">{cfg.label}</h3>
+                      <p className="text-xs font-medium text-zinc-500 truncate max-w-[280px]">{modal.rfpTitle}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block">
+                      {modal.decision === 'revision_requested' ? 'Revision Instructions' : 'Internal Notes'}
+                    </label>
+                    <textarea
+                      autoFocus
+                      value={reason}
+                      onChange={e => setReason(e.target.value)}
+                      placeholder={modal.decision === 'revision_requested'
+                        ? 'Describe specific changes or sections to refine...'
+                        : 'Any final comments for the archive...'}
+                      rows={4}
+                      className="w-full text-sm font-medium p-4 border border-zinc-200 rounded-xl outline-none focus:ring-4 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all bg-zinc-50 placeholder:text-zinc-400"
+                    />
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button onClick={() => setModal(null)}
+                      className="flex-1 h-10 text-[11px] font-bold uppercase tracking-widest border border-zinc-200 rounded-xl text-zinc-500 hover:bg-zinc-50 transition-all active:scale-95">
+                      Dismiss
+                    </button>
+                    <button
+                      onClick={confirmDecision}
+                      disabled={isSubmitting || (modal.decision === 'revision_requested' && !reason.trim())}
+                      className={cn('flex-1 h-10 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-zinc-900/10', cfg.class)}
+                    >
+                      {isSubmitting ? 'Processing...' : 'Confirm Action'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
         </div>
-        
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-white border-b border-zinc-100 text-[10px] font-black uppercase tracking-widest text-zinc-400">
-                <th className="px-6 py-4">RFP Details</th>
-                <th className="px-6 py-4">Client</th>
-                <th className="px-6 py-4">Value</th>
-                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-400">Status</th>
-                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-400">Deadline</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {filteredRFPs.length > 0 ? filteredRFPs.map((rfp) => (
-                <tr key={rfp.id} className="hover:bg-zinc-50/50 transition-colors group">
-                  <td className="px-6 py-4">
-                    <div onClick={() => router.push(`/dashboard/ceo/rfp/${rfp.id}`)} className="cursor-pointer">
-                      <p className="text-sm font-bold text-zinc-900 group-hover:text-blue-600 transition-colors">{rfp.title}</p>
-                      <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-tight">ID: RFP-{rfp.id}</p>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 hidden lg:table-cell">
-                    <p className="text-sm font-semibold text-zinc-700">{rfp.client_name || 'Unknown'}</p>
-                  </td>
-                  <td className="px-6 py-4 hidden md:table-cell">
-                    <div className="flex items-center gap-1.5 text-sm font-bold text-zinc-900">
-                      <span className="text-zinc-400 font-normal">₹</span>
-                      {rfp.value}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <Badge variant="outline" className={cn("rounded-lg border-2 font-bold flex items-center gap-1.5 w-fit", getStatusColor(rfp.status))}>
-                      {getStatusIcon(rfp.status)}
-                      {rfp.status.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                    </Badge>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-500">
-                      <Calendar className="w-3.5 h-3.5" />
-                      {rfp.deadline}
-                    </div>
-                  </td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center">
-                    <div className="max-w-xs mx-auto space-y-3">
-                      <div className="w-12 h-12 rounded-full bg-zinc-50 flex items-center justify-center mx-auto">
-                        <FileText className="w-6 h-6 text-zinc-300" />
-                      </div>
-                      <p className="text-sm font-bold text-zinc-900">No RFPs found</p>
-                      <p className="text-xs text-zinc-500">Try adjusting your filters or search query to find what you're looking for.</p>
-                      <Button variant="outline" onClick={() => { setFilter('all'); setSearchQuery('') }} className="text-xs font-bold rounded-xl mt-4">
-                        Clear all filters
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
     </div>
   )
 }

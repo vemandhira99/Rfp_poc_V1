@@ -43,11 +43,17 @@ def get_latest_draft(db: Session, rfp_id: int):
     
     latest_version = latest_version_record.version
     
-    # 2. Get all records for this version
+    # 2. Get all records for this version — BUG 4 FIX: always explicitly ORDER BY section_order ASC
+    # Repair any wrong/null section_order values before serving to the SA workspace
+    try:
+        from app.services.generation_service import repair_section_order
+        repair_section_order(db, rfp_id, latest_version)
+    except Exception:
+        pass
     draft_records = db.query(RFPDraft).filter(
-        RFPDraft.rfp_id == rfp_id, 
+        RFPDraft.rfp_id == rfp_id,
         RFPDraft.version == latest_version
-    ).order_by(RFPDraft.section_order).all()
+    ).order_by(RFPDraft.section_order.asc()).all()
     
     if not draft_records:
         return None

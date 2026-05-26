@@ -8,5 +8,6 @@ class QuotaUsage(Base):
     id         = Column(Integer, primary_key=True, index=True)
     day        = Column(String(10), unique=True, index=True) # YYYY-MM-DD
     request_count = Column(Integer, default=0)
+    token_count   = Column(Integer, default=0)
     is_exhausted  = Column(Boolean, default=False)
     updated_at    = Column(DateTime, default=func.now(), onupdate=func.now())

@@ -10,3 +10,8 @@ uploads/
 __pycache__/
 *.pyc
 scratch/
+*.docx
+models_list.txt
+rfp_status.txt
+test_doc.txt
+test_rfp.txt

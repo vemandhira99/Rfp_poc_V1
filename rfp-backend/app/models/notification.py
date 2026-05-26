@@ -10,4 +10,4 @@ class Notification(Base):
     message     = Column(Text, nullable=False)
     is_read     = Column(Boolean, default=False)
     type        = Column(String(50)) # 'info', 'success', 'warning', 'error'
-    created_at  = Column(DateTime, default=func.now())
+    created_at  = Column(DateTime, default=func.now())  # func.now() is standard SQL, utcnow() does not exist in PostgreSQL

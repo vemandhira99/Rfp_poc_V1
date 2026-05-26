@@ -86,9 +86,9 @@ export function UploadRfpModal({ isOpen, onClose }: UploadRfpModalProps) {
     "Uploading Document...",
     "Initializing AI Engine...",
     "Analyzing Document Structure...",
-    "Extracting Financial Requirements...",
+    "Extracting Detailed Metrics...",
     "Synthesizing Strategic Insights...",
-    "Finalizing Summary..."
+    "Finalizing AI Summary..."
   ]
 
   const handleUpload = async () => {
@@ -140,11 +140,9 @@ export function UploadRfpModal({ isOpen, onClose }: UploadRfpModalProps) {
     const token = localStorage.getItem('rfp_token');
     
     try {
-      // Stage 1: Initializing
       setCurrentStage(1)
-      await new Promise(r => setTimeout(r, 800))
+      await new Promise(r => setTimeout(r, 500))
       
-      // Stage 2: Trigger Parse
       setCurrentStage(2)
       const parseResponse = await fetch(`${API_BASE_URL}/uploads/rfp/${docId}/parse`, {
         method: 'POST',
@@ -157,49 +155,17 @@ export function UploadRfpModal({ isOpen, onClose }: UploadRfpModalProps) {
         throw new Error('AI Analysis engine failed to initialize');
       }
 
-      // REAL-TIME POLLING: Wait for the backend to finish
-      let isDone = false;
-      let attempts = 0;
-      const maxAttempts = 60; // 2 minutes max
-
-      while (!isDone && attempts < maxAttempts) {
-        attempts++;
-        const pollResponse = await fetch(`${API_BASE_URL}/rfps/${docId}`, {
-          headers: {
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-          }
-        });
-        
-        if (pollResponse.ok) {
-          const rfpData = await pollResponse.json();
-          const status = rfpData.current_status;
-          
-          if (status === 'queued_for_processing') {
-            setCurrentStage(2)
-          } else if (status === 'processing_summary') {
-            setCurrentStage(attempts % 2 === 0 ? 3 : 4)
-          } else if (status === 'pending-review' || status === 'summary_generated') {
-            isDone = true;
-            setCurrentStage(5)
-            await new Promise(r => setTimeout(r, 1000))
-            setCurrentStage(ANALYSIS_STAGES.length)
-            setProgress(100)
-          } else if (status && status.includes('error')) {
-            throw new Error(`AI Analysis failed: ${rfpData.status_message || 'Internal Error'}`);
-          }
-        }
-        
-        if (!isDone) {
-          await new Promise(r => setTimeout(r, 3000));
-        }
-      }
-
-      if (!isDone) {
-        throw new Error('Analysis is taking longer than expected. You can close this window; it will continue in the background.');
-      }
+      // Instead of blocking for minutes, we just show that it's running
+      // and give the user the option to close the modal.
+      setCurrentStage(3)
+      await new Promise(r => setTimeout(r, 500))
+      
+      // Stop the modal loader and show background message
+      setStep('success')
+      
     } catch (err: any) {
       setError(err.message)
-      setStep('success') // Stay in analysis view but show error
+      setStep('success') 
     }
   }
 
@@ -358,66 +324,33 @@ export function UploadRfpModal({ isOpen, onClose }: UploadRfpModalProps) {
           ) : (
             <div className="py-8 flex flex-col items-center text-center space-y-8">
               <div className="relative">
-                {currentStage === ANALYSIS_STAGES.length ? (
-                  <div className="w-24 h-24 rounded-full bg-emerald-50 flex items-center justify-center animate-in zoom-in duration-500">
-                    <CheckCircle2 className="w-12 h-12 text-emerald-500" />
+                  <div className="w-24 h-24 rounded-full bg-blue-50 flex items-center justify-center animate-in zoom-in duration-500">
+                    <Computer className="w-12 h-12 text-blue-500" />
                   </div>
-                ) : (
-                  <>
-                    <div className="w-24 h-24 rounded-full border-4 border-zinc-50 border-t-blue-600 animate-spin" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center">
-                        <Computer className="w-8 h-8 text-blue-600 animate-pulse" />
-                      </div>
-                    </div>
-                  </>
-                )}
+                  <div className="absolute top-0 right-0 w-6 h-6 bg-emerald-500 border-4 border-white rounded-full animate-pulse" />
               </div>
 
               <div className="space-y-3 w-full">
                 <div className="space-y-1">
                   <h3 className="text-xl font-bold text-zinc-900">
-                    {currentStage === ANALYSIS_STAGES.length ? 'Analysis Complete!' : ANALYSIS_STAGES[currentStage]}
+                    Analysis Running in Background
                   </h3>
                   <p className="text-sm text-zinc-500">
-                    {currentStage === ANALYSIS_STAGES.length ? 'Your RFP is ready for review on the dashboard.' : 'Our AI is reasoning through your RFP requirements.'}
+                    Your RFP was uploaded successfully and is now being analyzed. You can safely close this window.
                   </p>
-                </div>
-                
-                <div className="flex flex-col gap-2 pt-4">
-                  {ANALYSIS_STAGES.map((s, i) => (
-                    <div key={i} className={cn(
-                      "flex items-center gap-3 text-sm transition-all duration-500 px-4 py-2 rounded-lg",
-                      i < currentStage ? "text-emerald-600 bg-emerald-50/50" : 
-                      i === currentStage ? "text-blue-600 bg-blue-50 font-bold translate-x-2" : 
-                      "text-zinc-400 opacity-50"
-                    )}>
-                      {i < currentStage ? (
-                        <CheckCircle2 className="w-4 h-4" />
-                      ) : i === currentStage ? (
-                        <div className="w-4 h-4 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-                      ) : (
-                        <div className="w-4 h-4 rounded-full border-2 border-zinc-200" />
-                      )}
-                      {s}
-                    </div>
-                  ))}
                 </div>
               </div>
 
-              {currentStage === ANALYSIS_STAGES.length && (
-                <div className="pt-4 w-full animate-in fade-in slide-in-from-bottom-4 duration-1000">
-                  <Button 
-                    onClick={() => {
-                      handleClose()
-                      window.location.reload()
-                    }}
-                    className="w-full h-14 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl font-bold shadow-xl shadow-zinc-200"
-                  >
-                    View Final Analysis
-                  </Button>
-                </div>
-              )}
+              <div className="pt-4 w-full flex flex-col gap-3 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                <Button 
+                  onClick={() => {
+                    handleClose()
+                  }}
+                  className="w-full h-14 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl font-bold shadow-xl shadow-zinc-200"
+                >
+                  View Dashboard
+                </Button>
+              </div>
             </div>
           )}
         </div>

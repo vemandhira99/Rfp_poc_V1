@@ -14,9 +14,18 @@ class RFPOut(BaseModel):
     uploaded_by: Optional[int]
     file_name: Optional[str]
     file_type: Optional[str]
+    file_size_kb: Optional[int] = None
     created_at: Optional[datetime]
     assigned_by_name: Optional[str] = None
     summary_json: Optional[str] = None
+    submitted_at: Optional[datetime] = None
+    submitted_by: Optional[int] = None
+    quality_status: Optional[str] = None
+    document_quality: Optional[str] = None
+    word_count: Optional[int] = None
+    page_count: Optional[int] = None
+    extracted_text_length: Optional[int] = None
+    richness_reason: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -31,6 +40,15 @@ class DecisionRequest(BaseModel):
 class AssignRequest(BaseModel):
     architect_id: int
     notes: Optional[str] = None
+    length_mode: Optional[str] = "short"  # short | standard | full — short for E2E testing
+
+class SubmitReviewRequest(BaseModel):
+    notes: Optional[str] = None
+
+class FinalDecisionRequest(BaseModel):
+    decision: str            # final_approved | revision_requested | rejected
+    reason: Optional[str] = None
+    revision_notes: Optional[str] = None
 
 class CommentRequest(BaseModel):
     comment_text: str
@@ -94,4 +112,18 @@ class NotificationOut(BaseModel):
     created_at: datetime
 
     class Config:
-        from_attributes = True
+        from_attributes = True
+class GeneratedDocumentOut(BaseModel):
+    id: int
+    rfp_id: int
+    file_name: str
+    file_path: str
+    download_url: Optional[str]
+    document_type: str
+    version: int
+    status: str
+    is_available: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
